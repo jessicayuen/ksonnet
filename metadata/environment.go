@@ -50,7 +50,7 @@ var envPaths = []string{
 
 func (m *manager) CreateEnvironment(name, server, namespace, k8sSpecFlag string) error {
 	// generate the lib data for this kubernetes version
-	libManager, err := lib.NewManagerWithSpec(k8sSpecFlag, m.appFS, m.libPath)
+	libManager, err := lib.NewManager(k8sSpecFlag, m.appFS, m.libPath)
 	if err != nil {
 		return err
 	}
@@ -359,28 +359,34 @@ func (m *manager) SetEnvironmentParams(env, component string, params param.Param
 }
 
 func (m *manager) EnvPaths(env string) (libPath, mainPath, paramsPath string, err error) {
-	app, err := m.AppSpec()
-	if err != nil {
-		return
-	}
+	mainPath, paramsPath = m.makeEnvPaths(env)
+	libPath, err = m.getLibPath(env)
+	return
+}
 
-	envSpec, ok := app.GetEnvironmentSpec(env)
-	if !ok {
-		err = fmt.Errorf("Environment '%s' does not exist", env)
-		return
-	}
-
-	libManager := lib.NewManager(envSpec.KubernetesVersion, m.appFS, m.libPath)
-
+func (m *manager) makeEnvPaths(env string) (mainPath, paramsPath string) {
 	envPath := str.AppendToPath(m.environmentsPath, env)
 
 	// main.jsonnet file
 	mainPath = str.AppendToPath(envPath, envFileName)
 	// params.libsonnet file
 	paramsPath = str.AppendToPath(envPath, componentParamsFile)
-	// ksonnet-lib file directory
-	libPath, err = libManager.GetLibPath()
+
 	return
+}
+
+func (m *manager) getLibPath(env string) (string, error) {
+	envSpec, err := m.GetEnvironment(env)
+	if err != nil {
+		return "", err
+	}
+
+	libManager, err := lib.NewManager(fmt.Sprintf("version:%s", envSpec.KubernetesVersion), m.appFS, m.libPath)
+	if err != nil {
+		return "", err
+	}
+
+	return libManager.GetLibPath()
 }
 
 func (m *manager) ErrorOnSpecFile() error {
