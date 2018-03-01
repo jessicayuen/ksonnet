@@ -65,7 +65,11 @@ func (m *manager) CreateEnvironment(name, server, namespace, k8sSpecFlag string)
 		return err
 	}
 
-	if _, exists := appSpec.GetEnvironmentSpec(name); exists {
+	exists, err := m.environmentExists(name)
+	if err != nil {
+		return err
+	}
+	if exists {
 		return fmt.Errorf("Environment '%s' already exists", name)
 	}
 
@@ -135,9 +139,9 @@ func (m *manager) DeleteEnvironment(name string) error {
 		return err
 	}
 
-	env, ok := app.GetEnvironmentSpec(name)
-	if !ok {
-		return fmt.Errorf("Environment '%s' does not exist", name)
+	env, err := m.GetEnvironment(name)
+	if err != nil {
+		return err
 	}
 
 	envPath := str.AppendToPath(m.environmentsPath, env.Path)
@@ -168,6 +172,10 @@ func (m *manager) DeleteEnvironment(name string) error {
 }
 
 func (m *manager) GetEnvironments() (app.EnvironmentSpecs, error) {
+	if err := m.errorOnSpecFile(); err != nil {
+		return nil, err
+	}
+
 	app, err := m.AppSpec()
 	if err != nil {
 		return nil, err
@@ -178,6 +186,10 @@ func (m *manager) GetEnvironments() (app.EnvironmentSpecs, error) {
 }
 
 func (m *manager) GetEnvironment(name string) (*app.EnvironmentSpec, error) {
+	if err := m.errorOnSpecFile(); err != nil {
+		return nil, err
+	}
+
 	app, err := m.AppSpec()
 	if err != nil {
 		return nil, err
@@ -223,9 +235,9 @@ func (m *manager) SetEnvironment(name, desiredName string) error {
 		return err
 	}
 
-	current, exists := appSpec.GetEnvironmentSpec(name)
-	if !exists {
-		return fmt.Errorf("Trying to update an environment that doesn't exist")
+	current, err := m.GetEnvironment(name)
+	if err != nil {
+		return err
 	}
 
 	err = appSpec.UpdateEnvironmentSpec(name, &app.EnvironmentSpec{
@@ -247,7 +259,7 @@ func (m *manager) SetEnvironment(name, desiredName string) error {
 
 	pathOld := str.AppendToPath(m.environmentsPath, name)
 	pathNew := str.AppendToPath(m.environmentsPath, desiredName)
-	exists, err = afero.DirExists(m.appFS, pathNew)
+	exists, err := afero.DirExists(m.appFS, pathNew)
 	if err != nil {
 		return err
 	}
@@ -389,7 +401,7 @@ func (m *manager) getLibPath(env string) (string, error) {
 	return libManager.GetLibPath()
 }
 
-func (m *manager) ErrorOnSpecFile() error {
+func (m *manager) errorOnSpecFile() error {
 	return afero.Walk(m.appFS, m.environmentsPath, func(p string, f os.FileInfo, err error) error {
 		if err != nil {
 			log.Debugf("Failed to walk path %s", p)
@@ -501,6 +513,10 @@ params + {
 func (m *manager) environmentExists(name string) (bool, error) {
 	appSpec, err := m.AppSpec()
 	if err != nil {
+		return false, err
+	}
+
+	if err := m.errorOnSpecFile(); err != nil {
 		return false, err
 	}
 
